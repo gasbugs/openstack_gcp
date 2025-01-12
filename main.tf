@@ -4,83 +4,126 @@ provider "google" {
   zone    = var.zone            # 원하는 존으로 변경하세요
 }
 
-resource "google_compute_network" "custom_network" {
-  name                    = "custom-network"
-  auto_create_subnetworks = false
+locals {
+  networks = ["10.4.20.0/24", "10.4.30.0/24", "10.4.40.0/24", "192.168.193.0/24"]
 }
 
-resource "google_compute_subnetwork" "custom_subnet" {
-  name          = "custom-subnet"
-  ip_cidr_range = "10.0.0.0/24"
-  network       = google_compute_network.custom_network.id
+resource "google_compute_network" "custom_networks" {
+  count = length(local.networks)
+  name  = "custom-network-${count.index}"
 }
 
-resource "google_compute_network" "custom_network_2" {
-  name                    = "custom-network-2"
-  auto_create_subnetworks = false
+resource "google_compute_subnetwork" "custom_subnets" {
+  count         = length(local.networks)
+  name          = "custom-subnet-${count.index}"
+  ip_cidr_range = local.networks[count.index]
+  network       = google_compute_network.custom_networks[count.index].id
 }
 
-resource "google_compute_subnetwork" "custom_subnet_2" {
-  name          = "custom-subnet-2"
-  ip_cidr_range = "10.0.100.0/24"
-  network       = google_compute_network.custom_network_2.id
-}
-
-resource "google_compute_instance" "vm_instance" {
+resource "google_compute_instance" "vm_instances" {
   for_each = {
-    controller = ["10.0.0.11", "10.0.100.11"],
-    compute1   = ["10.0.0.31", "10.0.100.31"],
-    #block1     = ["10.0.0.41"],
-    #object1    = ["10.0.0.51"],
-    #object2    = ["10.0.0.52"]
+    kube1 = ["10.4.20.21", "10.4.30.21", "10.4.40.21", "192.168.193.21"],
+    kube2 = ["10.4.20.22", "10.4.30.22", "10.4.40.22", "192.168.193.22"],
+    kube3 = ["10.4.20.23", "10.4.30.23", "10.4.40.23", "192.168.193.23"]
   }
-  name = each.key
-  #machine_type = "custom-4-12288" # 2 vCPU, 8GB 메모리
-  machine_type = "n1-standard-4" # 4CPU, 15GB 메모리
+
+  name         = each.key
+  machine_type = "n2-standard-4" # 4 vCPU, 12288GB 메모리
   zone         = var.zone
 
   boot_disk {
+    device_name = "${each.key}-disk"
     initialize_params {
       # 원하는 OS 이미지 변경 가능z
       # https://console.cloud.google.com/compute/images 사이트 참고
       image = "ubuntu-2404-noble-amd64-v20241219"
       type  = "pd-standard" # HDD
-      size  = 100           # 100GB
+      size  = 50            # 50GB
     }
   }
 
-  # 외부 통신용
+  attached_disk {
+    source      = google_compute_disk.additional_disk[each.key].self_link
+    device_name = "${each.key}-additional-disk" # 100GB 디스크 추가 
+  }
+
+  # VT-x 지원을 위한 고급 설정
+  advanced_machine_features {
+    enable_nested_virtualization = true
+
+  }
+
+
+  # Ceph Storage Public (공인 IP 부여)
+  # 10.4.20.21-24/24
   network_interface {
-    network = "default"
+    network    = google_compute_network.custom_networks[0].id
+    subnetwork = google_compute_subnetwork.custom_subnets[0].id
+    network_ip = each.value[0]
     access_config {
       # 기본 인터넷 액세스를 위한 설정 (공인 IP 할당)
     }
   }
 
-  # 내부 통신용
+  # Ceph Storage Replication
+  # 10.4.30.21-24/24
   network_interface {
-    network    = google_compute_network.custom_network.id
-    subnetwork = google_compute_subnetwork.custom_subnet.id
-    network_ip = each.value[0]
-  }
-
-  # OVN용
-  network_interface {
-    network    = google_compute_network.custom_network_2.id
-    subnetwork = google_compute_subnetwork.custom_subnet_2.id
+    network    = google_compute_network.custom_networks[1].id
+    subnetwork = google_compute_subnetwork.custom_subnets[1].id
     network_ip = each.value[1]
   }
 
-  # metadata = {
-  #   ssh-keys = "${var.ssh_user}:${file("~/.ssh/id_rsa.pub")}"
-  # }
+  # Openstack Tanent Network
+  # 10.4.40.21-24/24
+  network_interface {
+    network    = google_compute_network.custom_networks[2].id
+    subnetwork = google_compute_subnetwork.custom_subnets[2].id
+    network_ip = each.value[2]
+  }
 
-  tags = ["ssh-allow", "allow-internal-net"]
+  # Openstack External Network: Provider Network
+  # 192.168.193.21-24/24
+  network_interface {
+    network    = google_compute_network.custom_networks[3].id
+    subnetwork = google_compute_subnetwork.custom_subnets[3].id
+    network_ip = each.value[3]
+  }
+
+  allow_stopping_for_update = true
+
+  tags = ["allow-my-ip", "allow-internal-net", "allow-ssh"]
+}
+
+resource "google_compute_disk" "additional_disk" {
+  for_each = {
+    kube1 = "ceph1-additional-disk",
+    kube2 = "ceph2-additional-disk",
+    kube3 = "ceph3-additional-disk"
+  }
+  name = each.value
+  type = "pd-standard"
+  zone = var.zone
+  size = 100 # 100GB, 필요에 따라 조정
+}
+
+
+
+resource "google_compute_firewall" "allow_my_ip" {
+  name    = "allow-my-ip"
+  network = google_compute_network.custom_networks[0].name
+
+  allow {
+    protocol = "all"
+    #ports    = ["1-65535"]
+  }
+
+  source_ranges = ["220.79.123.95/32"] # 모든 IP 허용 (필요에 따라 제한하세요)
+  target_tags   = ["allow-my-ip"]
 }
 
 resource "google_compute_firewall" "allow_ssh" {
-  name    = "allow-ssh"
-  network = "default"
+  name    = "my-allow-ssh"
+  network = google_compute_network.custom_networks[0].name
 
   allow {
     protocol = "tcp"
@@ -88,18 +131,20 @@ resource "google_compute_firewall" "allow_ssh" {
   }
 
   source_ranges = ["0.0.0.0/0"] # 모든 IP 허용 (필요에 따라 제한하세요)
-  target_tags   = ["ssh-allow"]
+  target_tags   = ["allow-ssh"]
 }
 
 resource "google_compute_firewall" "allow_all_interal_net" {
-  name    = "allow-internal-net"
-  network = google_compute_network.custom_network.name
+  count = length(local.networks)
+
+  name    = "allow-internal-net-${count.index}"
+  network = google_compute_network.custom_networks[count.index].id
 
   allow {
     protocol = "all"
   }
 
-  source_ranges = ["10.0.0.0/24"] # 모든 IP 허용 (필요에 따라 제한하세요)
+  source_ranges = local.networks # 모든 내부 IP 허용 
   target_tags   = ["allow-internal-net"]
 }
 
@@ -107,6 +152,6 @@ variable "zone" {
   default = "us-central1-a"
 }
 
-variable "ssh_user" {
-  default = "user0" # SSH 사용자 이름
-}
+# variable "ssh_user" {
+#   default = "user0" # SSH 사용자 이름
+# }
