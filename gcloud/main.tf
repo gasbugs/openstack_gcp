@@ -5,7 +5,7 @@ provider "google" {
 }
 
 locals {
-  networks = ["10.4.20.0/24", "192.168.100.0/24"]
+  networks = ["10.4.20.0/24", "10.4.30.0/24", "10.4.40.0/24", "192.168.193.0/24"]
 }
 
 resource "google_compute_network" "custom_networks" {
@@ -20,67 +20,15 @@ resource "google_compute_subnetwork" "custom_subnets" {
   network       = google_compute_network.custom_networks[count.index].id
 }
 
-resource "google_compute_instance" "k8s-cluster" {
+resource "google_compute_instance" "vm_instances" {
   for_each = {
-    controller = ["10.4.20.21", "192.168.100.21"],
-    compute1   = ["10.4.20.22", "192.168.100.22"],
-    compute2   = ["10.4.20.23", "192.168.100.23"]
+    kube1 = ["10.4.20.21", "10.4.30.21", "10.4.40.21", "192.168.193.21"],
+    kube2 = ["10.4.20.22", "10.4.30.22", "10.4.40.22", "192.168.193.22"],
+    kube3 = ["10.4.20.23", "10.4.30.23", "10.4.40.23", "192.168.193.23"]
   }
 
   name         = each.key
-  machine_type = "n2-standard-2" # 2 vCPU, 8GB 메모리
-  zone         = var.zone
-
-  boot_disk {
-    device_name = "${each.key}-disk"
-    initialize_params {
-      # 원하는 OS 이미지 변경 가능z
-      # https://console.cloud.google.com/compute/images 사이트 참고
-      image = "ubuntu-2204-jammy-v20250112"
-      type  = "pd-standard" # HDD
-      size  = 50            # 50GB
-    }
-  }
-
-  # VT-x 지원을 위한 고급 설정
-  advanced_machine_features {
-    enable_nested_virtualization = true
-  }
-
-  # manage network 
-  # 10.4.20.21-24/24
-  network_interface {
-    network    = google_compute_network.custom_networks[0].id
-    subnetwork = google_compute_subnetwork.custom_subnets[0].id
-    network_ip = each.value[0]
-
-    access_config {
-      # 기본 인터넷 액세스를 위한 설정 (공인 IP 할당)
-    }
-  }
-
-  # floating ip 
-  # 192.168.100.21-24/24
-  network_interface {
-    network    = google_compute_network.custom_networks[1].id
-    subnetwork = google_compute_subnetwork.custom_subnets[1].id
-    network_ip = each.value[1]
-  }
-
-  allow_stopping_for_update = true
-
-  tags = ["allow-my-ip", "allow-internal-net", "allow-ssh"]
-}
-
-resource "google_compute_instance" "ceph-cluster" {
-  for_each = {
-    ceph1 = ["10.4.20.31"],
-    ceph2 = ["10.4.20.32"],
-    ceph3 = ["10.4.20.33"]
-  }
-
-  name         = each.key
-  machine_type = "n2-standard-2" # 4 vCPU, 12288GB 메모리
+  machine_type = "n2-standard-4" # 4 vCPU, 12288GB 메모리
   zone         = var.zone
 
   boot_disk {
@@ -99,17 +47,46 @@ resource "google_compute_instance" "ceph-cluster" {
     device_name = "${each.key}-additional-disk" # 100GB 디스크 추가 
   }
 
+  # VT-x 지원을 위한 고급 설정
+  advanced_machine_features {
+    enable_nested_virtualization = true
 
-  # Ceph Storage Network
+  }
+
+
+  # Ceph Storage Public (공인 IP 부여)
   # 10.4.20.21-24/24
   network_interface {
     network    = google_compute_network.custom_networks[0].id
     subnetwork = google_compute_subnetwork.custom_subnets[0].id
     network_ip = each.value[0]
-
     access_config {
       # 기본 인터넷 액세스를 위한 설정 (공인 IP 할당)
     }
+  }
+
+  # Ceph Storage Replication
+  # 10.4.30.21-24/24
+  network_interface {
+    network    = google_compute_network.custom_networks[1].id
+    subnetwork = google_compute_subnetwork.custom_subnets[1].id
+    network_ip = each.value[1]
+  }
+
+  # Openstack Tanent Network
+  # 10.4.40.21-24/24
+  network_interface {
+    network    = google_compute_network.custom_networks[2].id
+    subnetwork = google_compute_subnetwork.custom_subnets[2].id
+    network_ip = each.value[2]
+  }
+
+  # Openstack External Network: Provider Network
+  # 192.168.193.21-24/24
+  network_interface {
+    network    = google_compute_network.custom_networks[3].id
+    subnetwork = google_compute_subnetwork.custom_subnets[3].id
+    network_ip = each.value[3]
   }
 
   allow_stopping_for_update = true
@@ -119,9 +96,9 @@ resource "google_compute_instance" "ceph-cluster" {
 
 resource "google_compute_disk" "additional_disk" {
   for_each = {
-    ceph1 = "ceph1-additional-disk",
-    ceph2 = "ceph2-additional-disk",
-    ceph3 = "ceph3-additional-disk"
+    kube1 = "ceph1-additional-disk",
+    kube2 = "ceph2-additional-disk",
+    kube3 = "ceph3-additional-disk"
   }
   name = each.value
   type = "pd-standard"
@@ -140,7 +117,7 @@ resource "google_compute_firewall" "allow_my_ip" {
     #ports    = ["1-65535"]
   }
 
-  source_ranges = ["175.198.0.0/16", "121.143.0.0/16", "14.37.0.0/16"] # 모든 IP 허용 (필요에 따라 제한하세요)
+  source_ranges = ["175.198.213.37/32"] # 모든 IP 허용 (필요에 따라 제한하세요)
   target_tags   = ["allow-my-ip"]
 }
 
