@@ -5,7 +5,7 @@ provider "google" {
 }
 
 locals {
-  networks = ["10.4.20.0/24", "192.168.100.0/24"]
+  networks = ["10.4.20.0/24", "192.168.244.0/24"]
 }
 
 resource "google_compute_network" "custom_networks" {
@@ -22,9 +22,9 @@ resource "google_compute_subnetwork" "custom_subnets" {
 
 resource "google_compute_instance" "k8s-cluster" {
   for_each = {
-    controller = ["10.4.20.21", "192.168.100.21"],
-    compute1   = ["10.4.20.22", "192.168.100.22"],
-    compute2   = ["10.4.20.23", "192.168.100.23"]
+    controller = ["10.4.20.21", "192.168.244.21"],
+    compute1   = ["10.4.20.22", "192.168.244.22"],
+    compute2   = ["10.4.20.23", "192.168.244.23"]
   }
 
   name         = each.key
@@ -47,7 +47,7 @@ resource "google_compute_instance" "k8s-cluster" {
     enable_nested_virtualization = true
   }
 
-  # manage network 
+  # management network 
   # 10.4.20.21-24/24
   network_interface {
     network    = google_compute_network.custom_networks[0].id
@@ -59,7 +59,7 @@ resource "google_compute_instance" "k8s-cluster" {
     }
   }
 
-  # floating ip 
+  # provider ip 
   # 192.168.100.21-24/24
   network_interface {
     network    = google_compute_network.custom_networks[1].id
@@ -140,7 +140,7 @@ resource "google_compute_firewall" "allow_my_ip" {
     #ports    = ["1-65535"]
   }
 
-  source_ranges = ["175.198.0.0/16", "121.143.0.0/16", "14.37.0.0/16"] # 모든 IP 허용 (필요에 따라 제한하세요)
+  source_ranges = ["175.198.0.0/16", "121.143.0.0/16", "14.37.0.0/16", "119.197.0.0/16"] # 모든 IP 허용 (필요에 따라 제한하세요)
   target_tags   = ["allow-my-ip"]
 }
 
