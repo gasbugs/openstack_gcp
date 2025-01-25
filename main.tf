@@ -4,6 +4,10 @@ provider "google" {
   zone    = var.zone            # 원하는 존으로 변경하세요
 }
 
+variable "zone" {
+  default = "us-central1-a"
+}
+
 locals {
   networks = ["10.4.20.0/24", "192.168.244.0/24"]
 }
@@ -169,10 +173,6 @@ resource "google_compute_firewall" "allow_all_interal_net" {
 
   source_ranges = local.networks # 모든 내부 IP 허용 
   target_tags   = ["allow-internal-net"]
-}
-
-variable "zone" {
-  default = "us-central1-a"
 }
 
 # variable "ssh_user" {
