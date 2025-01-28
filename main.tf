@@ -1,11 +1,11 @@
 provider "google" {
   project = "sds-openstack-001" # GCP 프로젝트 ID로 변경하세요
   region  = "us-central1"       # 원하는 리전으로 변경하세요
-  zone    = var.zone            # 원하는 존으로 변경하세요
+  zone    = var.zone
 }
 
 variable "zone" {
-  default = "us-central1-a"
+  default = "us-central1-a" # 원하는 존으로 변경하세요
 }
 
 locals {
