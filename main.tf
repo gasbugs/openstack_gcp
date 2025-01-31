@@ -22,60 +22,60 @@ resource "random_integer" "id" {
   max = 50000
 }
 
-# Cloud Router 생성
-resource "google_compute_router" "router" {
-  name    = "nat-router"
-  network = google_compute_network.custom_networks[0].name
-}
+# # Cloud Router 생성
+# resource "google_compute_router" "router" {
+#   name    = "nat-router"
+#   network = google_compute_network.custom_networks[0].name
+# }
 
-# Cloud NAT 게이트웨이 생성
-resource "google_compute_router_nat" "nat" {
-  name                               = "nat-gateway"
-  router                             = google_compute_router.router.name
-  region                             = google_compute_router.router.region
-  nat_ip_allocate_option             = "AUTO_ONLY"
-  source_subnetwork_ip_ranges_to_nat = "ALL_SUBNETWORKS_ALL_IP_RANGES"
+# # Cloud NAT 게이트웨이 생성
+# resource "google_compute_router_nat" "nat" {
+#   name                               = "nat-gateway"
+#   router                             = google_compute_router.router.name
+#   region                             = google_compute_router.router.region
+#   nat_ip_allocate_option             = "AUTO_ONLY"
+#   source_subnetwork_ip_ranges_to_nat = "ALL_SUBNETWORKS_ALL_IP_RANGES"
 
-  log_config {
-    enable = true
-    filter = "ERRORS_ONLY"
-  }
-}
+#   log_config {
+#     enable = true
+#     filter = "ERRORS_ONLY"
+#   }
+# }
 
-# 필요한 방화벽 규칙 설정 (예시)
-resource "google_compute_firewall" "allow_internal" {
-  name    = "allow-internal"
-  network = google_compute_network.custom_networks[0].name
+# # 필요한 방화벽 규칙 설정 (예시)
+# resource "google_compute_firewall" "allow_internal" {
+#   name    = "allow-internal"
+#   network = google_compute_network.custom_networks[0].name
 
-  allow {
-    protocol = "tcp"
-    ports    = ["0-65535"]
-  }
+#   allow {
+#     protocol = "tcp"
+#     ports    = ["0-65535"]
+#   }
 
-  allow {
-    protocol = "udp"
-    ports    = ["0-65535"]
-  }
+#   allow {
+#     protocol = "udp"
+#     ports    = ["0-65535"]
+#   }
 
-  allow {
-    protocol = "icmp"
-  }
+#   allow {
+#     protocol = "icmp"
+#   }
 
-  source_ranges = ["10.4.20.0/24"]
-}
+#   source_ranges = ["10.4.20.0/24"]
+# }
 
-resource "google_compute_subnetwork" "custom_subnets" {
-  count         = length(local.networks)
-  name          = "custom-subnet-${count.index + random_integer.id.result}"
-  ip_cidr_range = local.networks[count.index]
-  network       = google_compute_network.custom_networks[count.index].id
-}
+# resource "google_compute_subnetwork" "custom_subnets" {
+#   count         = length(local.networks)
+#   name          = "custom-subnet-${count.index + random_integer.id.result}"
+#   ip_cidr_range = local.networks[count.index]
+#   network       = google_compute_network.custom_networks[count.index].id
+# }
 
 resource "google_compute_instance" "k8s-cluster" {
   for_each = {
     controller = ["10.4.20.21", "192.168.244.21", true],
-    compute1   = ["10.4.20.22", "192.168.244.22", false],
-    compute2   = ["10.4.20.23", "192.168.244.23", false]
+    compute1   = ["10.4.20.22", "192.168.244.22", true],
+    compute2   = ["10.4.20.23", "192.168.244.23", true]
   }
 
   name         = each.key
@@ -125,64 +125,64 @@ resource "google_compute_instance" "k8s-cluster" {
   tags = ["allow-my-ip", "allow-internal-net", "allow-ssh"]
 }
 
-resource "google_compute_instance" "ceph-cluster" {
-  for_each = {
-    ceph1 = ["10.4.20.31", true],
-    ceph2 = ["10.4.20.32", false],
-    ceph3 = ["10.4.20.33", false]
-  }
+# resource "google_compute_instance" "ceph-cluster" {
+#   for_each = {
+#     ceph1 = ["10.4.20.31", false],
+#     ceph2 = ["10.4.20.32", false],
+#     ceph3 = ["10.4.20.33", false]
+#   }
 
-  name         = each.key
-  machine_type = "e2-standard-2" # 4 vCPU, 12288GB 메모리
-  zone         = var.zone
+#   name         = each.key
+#   machine_type = "e2-standard-2" # 4 vCPU, 12288GB 메모리
+#   zone         = var.zone
 
-  boot_disk {
-    device_name = "${each.key}-disk"
-    initialize_params {
-      # 원하는 OS 이미지 변경 가능z
-      # https://console.cloud.google.com/compute/images 사이트 참고
-      image = "ubuntu-2404-noble-amd64-v20241219"
-      type  = "pd-standard" # HDD
-      size  = 50            # 50GB
-    }
-  }
+#   boot_disk {
+#     device_name = "${each.key}-disk"
+#     initialize_params {
+#       # 원하는 OS 이미지 변경 가능z
+#       # https://console.cloud.google.com/compute/images 사이트 참고
+#       image = "ubuntu-2404-noble-amd64-v20241219"
+#       type  = "pd-standard" # HDD
+#       size  = 50            # 50GB
+#     }
+#   }
 
-  attached_disk {
-    source      = google_compute_disk.additional_disk[each.key].self_link
-    device_name = "${each.key}-additional-disk" # 100GB 디스크 추가 
-  }
+#   attached_disk {
+#     source      = google_compute_disk.additional_disk[each.key].self_link
+#     device_name = "${each.key}-additional-disk" # 100GB 디스크 추가 
+#   }
 
 
-  # Ceph Storage Network
-  # 10.4.20.21-24/24
-  network_interface {
-    network    = google_compute_network.custom_networks[0].id
-    subnetwork = google_compute_subnetwork.custom_subnets[0].id
-    network_ip = each.value[0]
+#   # Ceph Storage Network
+#   # 10.4.20.21-24/24
+#   network_interface {
+#     network    = google_compute_network.custom_networks[0].id
+#     subnetwork = google_compute_subnetwork.custom_subnets[0].id
+#     network_ip = each.value[0]
 
-    # 조건문을 사용하여 public IP 할당 여부 결정
-    dynamic "access_config" {
-      for_each = each.value[1] ? [1] : []
-      content {}
-    }
-  }
+#     # 조건문을 사용하여 public IP 할당 여부 결정
+#     dynamic "access_config" {
+#       for_each = each.value[1] ? [1] : []
+#       content {}
+#     }
+#   }
 
-  allow_stopping_for_update = true
+#   allow_stopping_for_update = true
 
-  tags = ["allow-my-ip", "allow-internal-net", "allow-ssh"]
-}
+#   tags = ["allow-my-ip", "allow-internal-net", "allow-ssh"]
+# }
 
-resource "google_compute_disk" "additional_disk" {
-  for_each = {
-    ceph1 = "ceph1-additional-disk",
-    ceph2 = "ceph2-additional-disk",
-    ceph3 = "ceph3-additional-disk"
-  }
-  name = each.value
-  type = "pd-standard"
-  zone = var.zone
-  size = 100 # 100GB, 필요에 따라 조정
-}
+# resource "google_compute_disk" "additional_disk" {
+#   for_each = {
+#     ceph1 = "ceph1-additional-disk",
+#     ceph2 = "ceph2-additional-disk",
+#     ceph3 = "ceph3-additional-disk"
+#   }
+#   name = each.value
+#   type = "pd-standard"
+#   zone = var.zone
+#   size = 100 # 100GB, 필요에 따라 조정
+# }
 
 
 
