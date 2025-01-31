@@ -1,11 +1,11 @@
 provider "google" {
-  project = "sds-openstack-001" # GCP 프로젝트 ID로 변경하세요
-  region  = "us-central1"       # 원하는 리전으로 변경하세요
+  project = "sds-openstack-03" # GCP 프로젝트 ID로 변경하세요
+  region  = "us-west1"         # 원하는 리전으로 변경하세요
   zone    = var.zone
 }
 
 variable "zone" {
-  default = "us-central1-a" # 원하는 존으로 변경하세요
+  default = "us-west1-b" # 원하는 존으로 변경하세요
 }
 
 locals {
@@ -17,18 +17,23 @@ resource "google_compute_network" "custom_networks" {
   name  = "custom-network-${count.index}"
 }
 
+resource "random_integer" "id" {
+  min = 1
+  max = 50000
+}
+
 resource "google_compute_subnetwork" "custom_subnets" {
   count         = length(local.networks)
-  name          = "custom-subnet-${count.index}"
+  name          = "custom-subnet-${count.index + random_integer.id.result}"
   ip_cidr_range = local.networks[count.index]
   network       = google_compute_network.custom_networks[count.index].id
 }
 
 resource "google_compute_instance" "k8s-cluster" {
   for_each = {
-    controller = ["10.4.20.21", "192.168.244.21"],
-    compute1   = ["10.4.20.22", "192.168.244.22"],
-    compute2   = ["10.4.20.23", "192.168.244.23"]
+    controller = ["10.4.20.21", "192.168.244.21", true],
+    compute1   = ["10.4.20.22", "192.168.244.22", false],
+    compute2   = ["10.4.20.23", "192.168.244.23", false]
   }
 
   name         = each.key
@@ -58,8 +63,10 @@ resource "google_compute_instance" "k8s-cluster" {
     subnetwork = google_compute_subnetwork.custom_subnets[0].id
     network_ip = each.value[0]
 
-    access_config {
-      # 기본 인터넷 액세스를 위한 설정 (공인 IP 할당)
+    # 조건문을 사용하여 public IP 할당 여부 결정
+    dynamic "access_config" {
+      for_each = each.value[2] ? [1] : []
+      content {}
     }
   }
 
@@ -78,13 +85,13 @@ resource "google_compute_instance" "k8s-cluster" {
 
 resource "google_compute_instance" "ceph-cluster" {
   for_each = {
-    ceph1 = ["10.4.20.31"],
-    ceph2 = ["10.4.20.32"],
-    ceph3 = ["10.4.20.33"]
+    ceph1 = ["10.4.20.31", true],
+    ceph2 = ["10.4.20.32", false],
+    ceph3 = ["10.4.20.33", false]
   }
 
   name         = each.key
-  machine_type = "n2-standard-2" # 4 vCPU, 12288GB 메모리
+  machine_type = "e2-standard-2" # 4 vCPU, 12288GB 메모리
   zone         = var.zone
 
   boot_disk {
@@ -111,8 +118,10 @@ resource "google_compute_instance" "ceph-cluster" {
     subnetwork = google_compute_subnetwork.custom_subnets[0].id
     network_ip = each.value[0]
 
-    access_config {
-      # 기본 인터넷 액세스를 위한 설정 (공인 IP 할당)
+    # 조건문을 사용하여 public IP 할당 여부 결정
+    dynamic "access_config" {
+      for_each = each.value[1] ? [1] : []
+      content {}
     }
   }
 
