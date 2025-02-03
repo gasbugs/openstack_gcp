@@ -40,9 +40,4 @@
 #   source_ranges = ["10.4.20.0/24"]
 # }
 
-# resource "google_compute_subnetwork" "custom_subnets" {
-#   count         = length(local.networks)
-#   name          = "custom-subnet-${count.index + random_integer.id.result}"
-#   ip_cidr_range = local.networks[count.index]
-#   network       = google_compute_network.custom_networks[count.index].id
-# }
+
