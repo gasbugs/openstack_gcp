@@ -22,6 +22,13 @@ resource "random_integer" "id" {
   max = 50000
 }
 
+resource "google_compute_subnetwork" "custom_subnets" {
+  count         = length(local.networks)
+  name          = "custom-subnet-${count.index + random_integer.id.result}"
+  ip_cidr_range = local.networks[count.index]
+  network       = google_compute_network.custom_networks[count.index].id
+}
+
 resource "google_compute_instance" "k8s-cluster" {
   for_each = {
     controller = ["10.4.20.21", "192.168.244.21", true],
