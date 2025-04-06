@@ -83,67 +83,68 @@ resource "google_compute_instance" "k8s-cluster" {
   tags = ["allow-my-ip", "allow-internal-net", "allow-ssh"]
 }
 
+/*
 # 2일차에 오픈
-# resource "google_compute_instance" "ceph-cluster" {
-#   for_each = {
-#     ceph1 = ["10.4.20.31", true],
-#     ceph2 = ["10.4.20.32", true],
-#     ceph3 = ["10.4.20.33", true]
-#   }
+resource "google_compute_instance" "ceph-cluster" {
+  for_each = {
+    ceph1 = ["10.4.20.31", true],
+    ceph2 = ["10.4.20.32", true],
+    ceph3 = ["10.4.20.33", true]
+  }
 
-#   name         = each.key
-#   machine_type = "e2-standard-2" # 4 vCPU, 12288GB 메모리
-#   zone         = var.zone
+  name         = each.key
+  machine_type = "n1-standard-1" # 1vCPU, 3.75GB 메모리
+  # machine_type = "e2-standard-2" # 2 vCPU, 4GB 메모리
+  zone         = var.zone
 
-#   boot_disk {
-#     device_name = "${each.key}-disk"
-#     initialize_params {
-#       # 원하는 OS 이미지 변경 가능z
-#       # https://console.cloud.google.com/compute/images 사이트 참고
-#       image = "ubuntu-2404-noble-amd64-v20241219"
-#       type  = "pd-standard" # HDD
-#       size  = 50            # 50GB
-#     }
-#   }
+  boot_disk {
+    device_name = "${each.key}-disk"
+    initialize_params {
+      # 원하는 OS 이미지 변경 가능z
+      # https://console.cloud.google.com/compute/images 사이트 참고
+      image = "ubuntu-2404-noble-amd64-v20241219"
+      type  = "pd-standard" # HDD
+      size  = 50            # 50GB
+    }
+  }
 
-#   attached_disk {
-#     source      = google_compute_disk.additional_disk[each.key].self_link
-#     device_name = "${each.key}-additional-disk" # 100GB 디스크 추가 
-#   }
-
-
-#   # Ceph Storage Network
-#   # 10.4.20.21-24/24
-#   network_interface {
-#     network    = google_compute_network.custom_networks[0].id
-#     subnetwork = google_compute_subnetwork.custom_subnets[0].id
-#     network_ip = each.value[0]
-
-#     # 조건문을 사용하여 public IP 할당 여부 결정
-#     dynamic "access_config" {
-#       for_each = each.value[1] ? [1] : []
-#       content {}
-#     }
-#   }
-
-#   allow_stopping_for_update = true
-
-#   tags = ["allow-my-ip", "allow-internal-net", "allow-ssh"]
-# }
-
-# resource "google_compute_disk" "additional_disk" {
-#   for_each = {
-#     ceph1 = "ceph1-additional-disk",
-#     ceph2 = "ceph2-additional-disk",
-#     ceph3 = "ceph3-additional-disk"
-#   }
-#   name = each.value
-#   type = "pd-standard"
-#   zone = var.zone
-#   size = 100 # 100GB, 필요에 따라 조정
-# }
+  attached_disk {
+    source      = google_compute_disk.additional_disk[each.key].self_link
+    device_name = "${each.key}-additional-disk" # 100GB 디스크 추가 
+  }
 
 
+  # Ceph Storage Network
+  # 10.4.20.21-24/24
+  network_interface {
+    network    = google_compute_network.custom_networks[0].id
+    subnetwork = google_compute_subnetwork.custom_subnets[0].id
+    network_ip = each.value[0]
+
+    # 조건문을 사용하여 public IP 할당 여부 결정
+    dynamic "access_config" {
+      for_each = each.value[1] ? [1] : []
+      content {}
+    }
+  }
+
+  allow_stopping_for_update = true
+
+  tags = ["allow-my-ip", "allow-internal-net", "allow-ssh"]
+}
+
+resource "google_compute_disk" "additional_disk" {
+  for_each = {
+    ceph1 = "ceph1-additional-disk",
+    ceph2 = "ceph2-additional-disk",
+    ceph3 = "ceph3-additional-disk"
+  }
+  name = each.value
+  type = "pd-standard"
+  zone = var.zone
+  size = 100 # 100GB, 필요에 따라 조정
+}
+*/
 
 resource "google_compute_firewall" "allow_my_ip" {
   name    = "allow-my-ip"
